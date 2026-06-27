@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Flashcards — Study Buddy{% endblock %}
+{% block content %}
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Flashcard Mode</h1>
+      <p class="page-subtitle">AI-generated flip cards from your notes</p>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="card" id="fcSetup">
+    <div class="card-header"><h2>Generate Flashcards</h2></div>
+    <div class="quiz-setup">
+      <div class="form-group form-group-sm">
+        <label>Number of Cards</label>
+        <select id="fcNum">
+          <option value="5">5 cards</option>
+          <option value="8" selected>8 cards</option>
+          <option value="12">12 cards</option>
+          <option value="20">20 cards</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Your Notes</label>
+        <textarea id="fcNotes" rows="7" placeholder="Paste your study notes here…"></textarea>
+      </div>
+      <button class="btn btn-primary btn-lg" id="fcGenerateBtn">
+        <span id="fcBtnText">🃏 Generate Flashcards</span>
+      </button>
+      <div class="auth-status" id="fcStatus"></div>
+    </div>
+  </div>
+
+  <!-- FLASHCARD VIEWER -->
+  <div class="hidden" id="fcViewer">
+    <div class="fc-meta">
+      <span id="fcCounter">Card 1 of 8</span>
+      <div class="fc-progress-bar"><div class="fc-progress-fill" id="fcProgressFill"></div></div>
+      <button class="btn btn-ghost btn-sm" id="fcRestartBtn">↺ Restart</button>
+    </div>
+
+    <div class="fc-stage">
+      <div class="flashcard" id="flashcard">
+        <div class="fc-inner" id="fcInner">
+          <div class="fc-front">
+            <div class="fc-label">QUESTION</div>
+            <div class="fc-content" id="fcFront"></div>
+            <div class="fc-hint" id="fcHint"></div>
+            <div class="fc-tap-hint">Tap card to reveal answer</div>
+          </div>
+          <div class="fc-back">
+            <div class="fc-label">ANSWER</div>
+            <div class="fc-content" id="fcBack"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc-controls">
+      <button class="btn btn-ghost" id="fcPrev">← Prev</button>
+      <div class="fc-dots" id="fcDots"></div>
+      <button class="btn btn-primary" id="fcNext">Next →</button>
+    </div>
+
+    <div class="fc-self-grade">
+      <p>How well did you know this?</p>
+      <div class="grade-buttons">
+        <button class="grade-btn grade-bad" data-grade="0">😕 Didn't know</button>
+        <button class="grade-btn grade-ok" data-grade="1">🤔 Almost</button>
+        <button class="grade-btn grade-good" data-grade="2">😊 Got it!</button>
+      </div>
+    </div>
+
+    <!-- SUMMARY -->
+    <div class="card hidden" id="fcSummary">
+      <div class="results-hero">
+        <div class="results-emoji">🃏</div>
+        <h2 class="results-title">Deck Complete!</h2>
+        <div class="results-score" id="fcScoreText"></div>
+      </div>
+      <canvas id="fcSummaryChart" height="100"></canvas>
+      <div class="results-actions">
+        <button class="btn btn-primary" id="fcRedoBtn">Study Again</button>
+        <a href="/dashboard" class="btn btn-ghost">Dashboard</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let cards = [], idx = 0, flipped = false;
+let grades = [];
+
+document.getElementById("fcGenerateBtn").addEventListener("click", async () => {
+  const notes = document.getElementById("fcNotes").value.trim();
+  const num   = document.getElementById("fcNum").value;
+  if (!notes) {
+    document.getElementById("fcStatus").textContent = "Please paste your notes first.";
+    document.getElementById("fcStatus").className = "auth-status error";
+    return;
+  }
+  document.getElementById("fcBtnText").textContent = "Generating…";
+  document.getElementById("fcGenerateBtn").disabled = true;
+
+  const res  = await fetch("/api/generate-flashcards", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({notes, num})
+  });
+  const data = await res.json();
+  document.getElementById("fcGenerateBtn").disabled = false;
+  document.getElementById("fcBtnText").textContent = "🃏 Generate Flashcards";
+
+  if (data.ok) {
+    cards  = data.cards;
+    grades = new Array(cards.length).fill(null);
+    document.getElementById("fcSetup").classList.add("hidden");
+    document.getElementById("fcViewer").classList.remove("hidden");
+    buildDots();
+    showCard(0);
+  } else {
+    document.getElementById("fcStatus").textContent = data.error;
+    document.getElementById("fcStatus").className = "auth-status error";
+  }
+});
+
+function buildDots() {
+  const dots = document.getElementById("fcDots");
+  dots.innerHTML = "";
+  cards.forEach((_, i) => {
+    const d = document.createElement("span");
+    d.className = "fc-dot" + (i === 0 ? " active" : "");
+    d.addEventListener("click", () => showCard(i));
+    dots.appendChild(d);
+  });
+}
+
+function showCard(i) {
+  idx = i; flipped = false;
+  const card = cards[i];
+  document.getElementById("fcInner").classList.remove("flipped");
+  document.getElementById("fcFront").textContent = card.front;
+  document.getElementById("fcBack").textContent  = card.back;
+  document.getElementById("fcHint").textContent  = card.hint ? `Hint: ${card.hint}` : "";
+  document.getElementById("fcCounter").textContent = `Card ${i+1} of ${cards.length}`;
+  document.getElementById("fcProgressFill").style.width = `${((i+1)/cards.length)*100}%`;
+  document.querySelectorAll(".fc-dot").forEach((d, di) => d.classList.toggle("active", di === i));
+  document.getElementById("fcSummary").classList.add("hidden");
+  document.querySelector(".fc-self-grade").classList.remove("hidden");
+}
+
+document.getElementById("flashcard").addEventListener("click", () => {
+  flipped = !flipped;
+  document.getElementById("fcInner").classList.toggle("flipped", flipped);
+});
+
+document.getElementById("fcNext").addEventListener("click", () => {
+  if (idx < cards.length - 1) showCard(idx + 1);
+  else showSummary();
+});
+
+document.getElementById("fcPrev").addEventListener("click", () => {
+  if (idx > 0) showCard(idx - 1);
+});
+
+document.querySelectorAll(".grade-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    grades[idx] = parseInt(btn.dataset.grade);
+    document.querySelectorAll(".grade-btn").forEach(b => b.classList.remove("selected-grade"));
+    btn.classList.add("selected-grade");
+  });
+});
+
+document.getElementById("fcRestartBtn").addEventListener("click", () => {
+  grades = new Array(cards.length).fill(null);
+  showCard(0);
+});
+
+document.getElementById("fcRedoBtn").addEventListener("click", () => {
+  grades = new Array(cards.length).fill(null);
+  document.getElementById("fcSummary").classList.add("hidden");
+  showCard(0);
+});
+
+function showSummary() {
+  document.getElementById("fcSummary").classList.remove("hidden");
+  document.querySelector(".fc-self-grade").classList.add("hidden");
+  const known   = grades.filter(g => g === 2).length;
+  const almost  = grades.filter(g => g === 1).length;
+  const unknown = grades.filter(g => g === 0 || g === null).length;
+  document.getElementById("fcScoreText").textContent =
+    `${known} known · ${almost} almost · ${unknown} to review`;
+  new Chart(document.getElementById("fcSummaryChart"), {
+    type: "bar",
+    data: {
+      labels: ["Got it!", "Almost", "To Review"],
+      datasets: [{
+        data: [known, almost, unknown],
+        backgroundColor: ["#10b981","#f59e0b","#f43f5e"],
+        borderRadius: 6, borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#a0a0b0" }, grid: { display: false } },
+        y: { ticks: { color: "#a0a0b0", stepSize: 1 }, grid: { color: "rgba(255,255,255,0.06)" } }
+      }
+    }
+  });
+}
+</script>
+{% endblock %}

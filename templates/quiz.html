@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Quiz — Study Buddy{% endblock %}
+{% block content %}
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Quiz Mode</h1>
+      <p class="page-subtitle">Paste your notes and let AI generate questions</p>
+    </div>
+  </div>
+
+  <!-- SETUP PANEL -->
+  <div class="card" id="setupPanel">
+    <div class="card-header"><h2>Setup Your Quiz</h2></div>
+    <div class="quiz-setup">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Topic Name</label>
+          <input type="text" id="quizTopic" placeholder="e.g. Python Loops, World War II"/>
+        </div>
+        <div class="form-group form-group-sm">
+          <label>Questions</label>
+          <select id="quizNum">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Your Notes</label>
+        <textarea id="quizNotes" rows="8" placeholder="Paste your study notes here… The more detail you provide, the better the questions will be."></textarea>
+      </div>
+      <button class="btn btn-primary btn-lg" id="generateBtn">
+        <span id="generateBtnText">⚡ Generate Quiz</span>
+      </button>
+      <div class="auth-status" id="setupStatus"></div>
+    </div>
+  </div>
+
+  <!-- QUIZ PANEL -->
+  <div class="card hidden" id="quizPanel">
+    <div class="quiz-progress-bar">
+      <div class="quiz-progress-fill" id="progressFill"></div>
+    </div>
+    <div class="quiz-meta">
+      <span id="questionCounter">Question 1 of 10</span>
+      <span id="scoreCounter">Score: 0</span>
+    </div>
+    <div class="question-block">
+      <h2 class="question-text" id="questionText"></h2>
+      <div class="options-grid" id="optionsGrid"></div>
+    </div>
+    <div class="feedback-block hidden" id="feedbackBlock">
+      <div class="feedback-icon" id="feedbackIcon"></div>
+      <div class="feedback-text" id="feedbackText"></div>
+      <button class="btn btn-primary" id="nextBtn">Next Question →</button>
+    </div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+  <div class="card hidden" id="resultsPanel">
+    <div class="results-hero">
+      <div class="results-emoji" id="resultsEmoji"></div>
+      <h2 class="results-title" id="resultsTitle"></h2>
+      <div class="results-score" id="resultsScore"></div>
+    </div>
+    <canvas id="resultsChart" height="120"></canvas>
+    <div class="results-actions">
+      <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
+      <a href="/dashboard" class="btn btn-ghost">Back to Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentAnswer = null;
+let score = 0, answered = 0, total = 0;
+let correctArr = [], wrongArr = [];
+
+document.getElementById("generateBtn").addEventListener("click", async () => {
+  const notes = document.getElementById("quizNotes").value.trim();
+  const topic = document.getElementById("quizTopic").value.trim() || "General";
+  const num   = document.getElementById("quizNum").value;
+  if (!notes) {
+    document.getElementById("setupStatus").textContent = "Please paste your notes first.";
+    document.getElementById("setupStatus").className = "auth-status error";
+    return;
+  }
+  const btn = document.getElementById("generateBtn");
+  document.getElementById("generateBtnText").textContent = "Generating…";
+  btn.disabled = true;
+
+  const res  = await fetch("/api/generate-quiz", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({notes, topic, num})
+  });
+  const data = await res.json();
+  btn.disabled = false;
+  document.getElementById("generateBtnText").textContent = "⚡ Generate Quiz";
+
+  if (data.ok) {
+    total = data.total;
+    document.getElementById("setupPanel").classList.add("hidden");
+    document.getElementById("quizPanel").classList.remove("hidden");
+    loadQuestion();
+  } else {
+    document.getElementById("setupStatus").textContent = data.error;
+    document.getElementById("setupStatus").className = "auth-status error";
+  }
+});
+
+async function loadQuestion() {
+  const res  = await fetch("/api/question");
+  const data = await res.json();
+  if (data.done) { showResults(); return; }
+
+  document.getElementById("questionCounter").textContent = `Question ${data.index + 1} of ${data.total}`;
+  document.getElementById("scoreCounter").textContent    = `Score: ${score}`;
+  document.getElementById("progressFill").style.width   = `${((data.index) / data.total) * 100}%`;
+  document.getElementById("questionText").textContent   = data.question;
+  document.getElementById("feedbackBlock").classList.add("hidden");
+  currentAnswer = null;
+
+  const grid = document.getElementById("optionsGrid");
+  grid.innerHTML = "";
+  Object.entries(data.options).forEach(([letter, text]) => {
+    const btn = document.createElement("button");
+    btn.className = "option-btn";
+    btn.innerHTML = `<span class="option-letter">${letter}</span><span class="option-text">${text}</span>`;
+    btn.addEventListener("click", () => selectAnswer(letter, btn));
+    grid.appendChild(btn);
+  });
+}
+
+function selectAnswer(letter, btn) {
+  if (currentAnswer) return;
+  currentAnswer = letter;
+  document.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  submitAnswer(letter);
+}
+
+async function submitAnswer(letter) {
+  const res  = await fetch("/api/answer", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({answer: letter})
+  });
+  const data = await res.json();
+  score    = data.score;
+  answered = data.answered;
+
+  document.querySelectorAll(".option-btn").forEach(btn => {
+    const l = btn.querySelector(".option-letter").textContent;
+    if (l === data.right_answer) btn.classList.add("correct");
+    else if (l === letter && !data.correct) btn.classList.add("wrong");
+    btn.disabled = true;
+  });
+
+  if (data.correct) correctArr.push(1); else wrongArr.push(1);
+
+  const fb = document.getElementById("feedbackBlock");
+  document.getElementById("feedbackIcon").textContent = data.correct ? "✅" : "❌";
+  document.getElementById("feedbackText").textContent = data.correct
+    ? "Correct! Well done." : `Wrong. ${data.explanation}`;
+  fb.classList.remove("hidden");
+
+  if (data.answered >= data.total) {
+    document.getElementById("nextBtn").textContent = "See Results →";
+  }
+}
+
+document.getElementById("nextBtn").addEventListener("click", () => {
+  if (answered >= total) { showResults(); return; }
+  loadQuestion();
+});
+
+function showResults() {
+  document.getElementById("quizPanel").classList.add("hidden");
+  const panel = document.getElementById("resultsPanel");
+  panel.classList.remove("hidden");
+  const pct = Math.round((score / total) * 100);
+  document.getElementById("resultsScore").textContent = `${score} / ${total} correct (${pct}%)`;
+  if (pct === 100) {
+    document.getElementById("resultsEmoji").textContent = "🏆";
+    document.getElementById("resultsTitle").textContent = "Perfect Score!";
+  } else if (pct >= 70) {
+    document.getElementById("resultsEmoji").textContent = "🎉";
+    document.getElementById("resultsTitle").textContent = "Great Job!";
+  } else {
+    document.getElementById("resultsEmoji").textContent = "📚";
+    document.getElementById("resultsTitle").textContent = "Keep Studying!";
+  }
+  new Chart(document.getElementById("resultsChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Correct", "Wrong"],
+      datasets: [{ data: [score, total - score], backgroundColor: ["#10b981","#f43f5e"], borderWidth: 0 }]
+    },
+    options: { responsive:true, plugins:{ legend:{ position:"bottom", labels:{ color: "#a0a0b0" } } } }
+  });
+}
+</script>
+{% endblock %}

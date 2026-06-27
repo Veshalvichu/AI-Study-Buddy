@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Profile — Study Buddy{% endblock %}
+{% block content %}
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Your Profile</h1>
+      <p class="page-subtitle">Manage your account and view your stats</p>
+    </div>
+  </div>
+
+  <div class="profile-grid">
+    <!-- LEFT: Profile Card -->
+    <div class="card profile-card">
+      <div class="profile-avatar-wrap">
+        <img src="{{ user.avatar }}" alt="avatar" class="profile-avatar"/>
+        <div class="avatar-ring"></div>
+      </div>
+      <h2 class="profile-name" id="displayName">{{ user.name }}</h2>
+      <p class="profile-email">{{ user.email }}</p>
+      <p class="profile-bio" id="displayBio">{{ user.bio or "No bio yet." }}</p>
+
+      <div class="profile-badges">
+        <div class="badge-item">
+          <span class="badge-icon">🔥</span>
+          <span class="badge-val">{{ user.streak }}</span>
+          <span class="badge-lbl">Streak</span>
+        </div>
+        <div class="badge-item">
+          <span class="badge-icon">📝</span>
+          <span class="badge-val">{{ total_sessions }}</span>
+          <span class="badge-lbl">Sessions</span>
+        </div>
+        <div class="badge-item">
+          <span class="badge-icon">🎯</span>
+          <span class="badge-val">{{ accuracy }}%</span>
+          <span class="badge-lbl">Accuracy</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="editToggleBtn">Edit Profile</button>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="profile-right">
+      <!-- EDIT FORM -->
+      <div class="card hidden" id="editCard">
+        <div class="card-header"><h2>Edit Profile</h2></div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="editName" value="{{ user.name }}"/>
+        </div>
+        <div class="form-group">
+          <label>Bio</label>
+          <textarea id="editBio" rows="3" placeholder="Tell us about yourself…">{{ user.bio or "" }}</textarea>
+        </div>
+        <div style="display:flex;gap:0.75rem">
+          <button class="btn btn-primary" id="saveProfileBtn">Save Changes</button>
+          <button class="btn btn-ghost" id="cancelEditBtn">Cancel</button>
+        </div>
+        <div class="auth-status" id="editStatus"></div>
+      </div>
+
+      <!-- STATS -->
+      <div class="card">
+        <div class="card-header"><h2>Performance Overview</h2></div>
+        <div class="stats-grid-2">
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-info">
+              <div class="stat-value">{{ total_questions }}</div>
+              <div class="stat-label">Total Questions</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-info">
+              <div class="stat-value">{{ accuracy }}%</div>
+              <div class="stat-label">Overall Accuracy</div>
+            </div>
+          </div>
+        </div>
+        <canvas id="profileChart" height="160" style="margin-top:1.5rem"></canvas>
+      </div>
+
+      <!-- ACHIEVEMENT BADGES -->
+      <div class="card">
+        <div class="card-header"><h2>Achievements</h2></div>
+        <div class="achievements-grid">
+          <div class="achievement {% if total_sessions >= 1 %}earned{% endif %}">
+            <div class="ach-icon">🚀</div>
+            <div class="ach-name">First Quiz</div>
+          </div>
+          <div class="achievement {% if user.streak >= 3 %}earned{% endif %}">
+            <div class="ach-icon">🔥</div>
+            <div class="ach-name">3-Day Streak</div>
+          </div>
+          <div class="achievement {% if total_sessions >= 10 %}earned{% endif %}">
+            <div class="ach-icon">📚</div>
+            <div class="ach-name">10 Sessions</div>
+          </div>
+          <div class="achievement {% if accuracy >= 80 %}earned{% endif %}">
+            <div class="ach-icon">🎯</div>
+            <div class="ach-name">80% Accuracy</div>
+          </div>
+          <div class="achievement {% if user.streak >= 7 %}earned{% endif %}">
+            <div class="ach-icon">⚡</div>
+            <div class="ach-name">7-Day Streak</div>
+          </div>
+          <div class="achievement {% if total_sessions >= 25 %}earned{% endif %}">
+            <div class="ach-icon">🏆</div>
+            <div class="ach-name">25 Sessions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Edit toggle
+document.getElementById("editToggleBtn").addEventListener("click", () => {
+  document.getElementById("editCard").classList.toggle("hidden");
+});
+document.getElementById("cancelEditBtn").addEventListener("click", () => {
+  document.getElementById("editCard").classList.add("hidden");
+});
+document.getElementById("saveProfileBtn").addEventListener("click", async () => {
+  const name = document.getElementById("editName").value.trim();
+  const bio  = document.getElementById("editBio").value.trim();
+  const res  = await fetch("/api/update-profile", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, bio})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById("displayName").textContent = name;
+    document.getElementById("displayBio").textContent  = bio || "No bio yet.";
+    document.getElementById("editStatus").textContent  = "Saved!";
+    document.getElementById("editStatus").className    = "auth-status success";
+    setTimeout(() => document.getElementById("editCard").classList.add("hidden"), 1000);
+  }
+});
+
+// Profile chart
+async function loadProfileChart() {
+  const res  = await fetch("/api/stats");
+  const data = await res.json();
+  if (!data.length) return;
+  const last10 = data.slice(-10);
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  const textColor = isDark ? "#a0a0b0" : "#555566";
+  const gridColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
+
+  new Chart(document.getElementById("profileChart"), {
+    type: "bar",
+    data: {
+      labels: last10.map(s => s.topic),
+      datasets: [{
+        label: "Score %",
+        data: last10.map(s => s.score),
+        backgroundColor: last10.map(s => s.score >= 70 ? "#10b981" : s.score >= 40 ? "#f59e0b" : "#f43f5e"),
+        borderRadius: 6, borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: textColor, maxRotation: 30 }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { color: textColor, callback: v => v+"%" }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+loadProfileChart();
+</script>
+{% endblock %}

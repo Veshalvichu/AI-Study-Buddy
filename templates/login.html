@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Sign In — Study Buddy{% endblock %}
+{% block content %}
+
+<style>
+.auth-page {
+  background:
+    radial-gradient(ellipse 80% 50% at 70% -10%, rgba(139,92,246,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 10% 110%, rgba(6,182,212,0.1) 0%, transparent 50%),
+    var(--bg);
+}
+.auth-split { display:flex; width:100%; max-width:900px; gap:3rem; align-items:center; }
+.auth-left { flex:1; display:none; }
+.auth-right { flex:0 0 420px; }
+@media(min-width:780px){ .auth-left{ display:block; } }
+.hero-title { font-size:2.6rem; font-weight:700; line-height:1.2; letter-spacing:-0.03em; margin-bottom:1.25rem; }
+.hero-title span { color:var(--accent); }
+.hero-desc { color:var(--text2); line-height:1.7; margin-bottom:2rem; font-size:0.95rem; }
+.hero-features { display:flex; flex-direction:column; gap:0.75rem; }
+.hero-feature {
+  display:flex; align-items:center; gap:0.9rem;
+  padding:0.85rem 1rem; border-radius:14px;
+  background:var(--surface); border:1px solid var(--border);
+}
+.hero-feature-icon {
+  width:38px; height:38px; border-radius:10px;
+  background:rgba(139,92,246,0.1); border:1px solid rgba(139,92,246,0.15);
+  display:flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;
+}
+.hero-feature-text { font-size:0.875rem; font-weight:500; }
+.hero-feature-sub { font-size:0.75rem; color:var(--text2); }
+.username-big {
+  font-size:1.1rem; padding:0.85rem 1.1rem; border-radius:14px;
+  background:var(--input); border:1.5px solid var(--border);
+  letter-spacing:0.02em;
+}
+.username-big:focus { border-color:var(--accent); box-shadow:0 0 0 4px rgba(139,92,246,0.1); }
+.divider { display:flex; align-items:center; gap:0.75rem; margin:0.5rem 0; color:var(--text3); font-size:0.78rem; }
+.divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--border); }
+</style>
+
+<div class="auth-split">
+  <div class="auth-left">
+    <h1 class="hero-title">Learn smarter<br/>with <span>AI power</span></h1>
+    <p class="hero-desc">Paste your notes, get AI-generated quizzes and flashcards instantly. Track your progress and build daily streaks.</p>
+    <div class="hero-features">
+      <div class="hero-feature">
+        <div class="hero-feature-icon">🧠</div>
+        <div>
+          <div class="hero-feature-text">AI Quiz Generator</div>
+          <div class="hero-feature-sub">Turn any notes into smart MCQs</div>
+        </div>
+      </div>
+      <div class="hero-feature">
+        <div class="hero-feature-icon">🃏</div>
+        <div>
+          <div class="hero-feature-text">Flashcard Mode</div>
+          <div class="hero-feature-sub">Flip cards with self-grading</div>
+        </div>
+      </div>
+      <div class="hero-feature">
+        <div class="hero-feature-icon">📊</div>
+        <div>
+          <div class="hero-feature-text">Progress Analytics</div>
+          <div class="hero-feature-sub">Charts, streaks & achievements</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="auth-right">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">⚡</div>
+        <h1>Study<span class="accent">Buddy</span></h1>
+        <p>Enter a username to continue</p>
+      </div>
+
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="usernameInput" class="username-big" placeholder="e.g. veshal" autocomplete="username" autofocus/>
+      </div>
+
+      <button class="btn btn-primary btn-full btn-lg" id="loginBtn">
+        Continue →
+      </button>
+
+      <div class="auth-status" id="loginStatus"></div>
+
+      <div class="divider">or</div>
+      <p style="text-align:center;font-size:0.8rem;color:var(--text3);">
+        New here? Just pick a username — we'll create your account.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  const username = document.getElementById("usernameInput").value.trim();
+  const status   = document.getElementById("loginStatus");
+  if (!username) {
+    status.textContent = "Please enter a username.";
+    status.className   = "auth-status error";
+    return;
+  }
+  const btn = document.getElementById("loginBtn");
+  btn.textContent = "Loading…"; btn.disabled = true;
+
+  const res  = await fetch("/api/login", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({username})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    window.location.href = data.redirect;
+  } else {
+    btn.textContent = "Continue →"; btn.disabled = false;
+    status.textContent = data.error;
+    status.className   = "auth-status error";
+  }
+}
+document.getElementById("loginBtn").addEventListener("click", doLogin);
+document.getElementById("usernameInput").addEventListener("keydown", e => { if(e.key==="Enter") doLogin(); });
+</script>
+{% endblock %}
